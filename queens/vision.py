@@ -1,12 +1,12 @@
-"""Deteccion del tablero de Queens en una captura, con OpenCV.
+"""Detection of the Queens board in a screenshot, with OpenCV.
 
-El pipeline registra cada etapa intermedia (imagen + notas) mientras trabaja.
-Ese registro no es depuracion opcional: es lo que alimenta el panel de vision,
-donde se ve como se genera la entrada digital a partir del PNG.
+The pipeline records every intermediate stage (image + notes) as it works. That
+record is not optional debugging: it is what feeds the vision panel, where you
+can watch the digital input being derived from the PNG.
 
-Cuando algo falla, `Detection.error` explica que fallo y `stages` conserva todo
-lo avanzado hasta ese punto. Nunca se devuelve un tablero a medias: un tablero
-corrupto en silencio seria el peor resultado posible.
+When something fails, `Detection.error` explains what failed and `stages` keeps
+everything reached up to that point. A half-detected board is never returned:
+silently handing back a corrupt board would be the worst possible outcome.
 """
 
 from __future__ import annotations
@@ -18,26 +18,25 @@ import numpy as np
 
 from .board import Board
 
-# Umbral de gris por debajo del cual un pixel se considera "linea" del tablero.
-# El marco es casi negro y la pagina esta por encima de 200, asi que hay margen.
+# Gray level below which a pixel counts as a board "line". The frame is nearly
+# black and the page sits above 200, so there is plenty of margin.
 DARK_THRESHOLD = 100
 
-# Un contorno candidato debe tener al menos estos agujeros para ser el tablero.
-# Es el filtro decisivo: en las capturas de doc/ el tablero tiene 81 y el
-# siguiente candidato (el chrome del navegador) se queda en 12.
+# A candidate contour needs at least this many holes to be the board. This is
+# the decisive filter: in the screenshots under doc/ the board has 81 holes and
+# the runner-up (the browser chrome) only reaches 12.
 MIN_HOLES = 20
 
-# Distancia maxima en el espacio Lab de 8 bits de OpenCV para considerar que dos
-# celdas son de la misma region. En las capturas de doc/ el muestreo da colores
-# identicos dentro de una region, y el par de regiones mas parecido (morado y
-# rosa) esta a 23.4: hay que quedarse por debajo de esa distancia, con margen
-# suficiente para absorber la variacion que introduce un reescalado.
+# Maximum distance in OpenCV's 8-bit Lab space for two cells to count as the
+# same region. In the doc/ screenshots sampling yields identical colors within a
+# region, and the closest pair of regions (purple and pink) sits at 23.4: we
+# must stay below that, with enough margin to absorb rescaling noise.
 COLOR_TOLERANCE = 15
 
 
 @dataclass
 class Stage:
-    """Una etapa intermedia del pipeline, lista para mostrarse."""
+    """One intermediate stage of the pipeline, ready to be displayed."""
 
     name: str
     image: np.ndarray          # BGR
@@ -56,7 +55,7 @@ class Detection:
 
 
 class _Recorder:
-    """Acumula las etapas. Desactivado no copia nada, para no gastar memoria."""
+    """Collects the stages. When disabled it copies nothing, to save memory."""
 
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
@@ -72,13 +71,13 @@ class _Recorder:
 
 def _label(img: np.ndarray, text: str, org: tuple[int, int],
            color: tuple[int, int, int]) -> None:
-    """Texto con reborde blanco, legible sobre cualquier fondo."""
+    """Text with a white outline, legible over any background."""
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 3, cv2.LINE_AA)
     cv2.putText(img, text, org, cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1, cv2.LINE_AA)
 
 
 def _cluster_1d(values: np.ndarray, gap: float) -> list[float]:
-    """Agrupa valores proximos y devuelve el centro de cada grupo, ordenado."""
+    """Group nearby values and return the center of each group, sorted."""
     centers: list[float] = []
     group: list[float] = []
     for v in np.sort(values):
@@ -92,11 +91,11 @@ def _cluster_1d(values: np.ndarray, gap: float) -> list[float]:
 
 
 def _dominant_color(roi: np.ndarray) -> tuple[int, int, int]:
-    """Color mas frecuente del ROI, cuantizado a 4 bits por canal.
+    """Most frequent color of the ROI, quantized to 4 bits per channel.
 
-    No se usa la media: si la celda ya tiene una reina o una cruz dibujada, la
-    media queda sesgada por el glifo. La moda es inmune a cualquier dibujo que
-    ocupe menos de la mitad del area.
+    The mean is deliberately avoided: if the cell already has a queen or a cross
+    drawn on it, the mean is skewed by the glyph. The mode is immune to any
+    drawing covering less than half the area.
     """
     q = (roi.reshape(-1, 3) >> 4).astype(np.int32)
     key = (q[:, 0] << 8) | (q[:, 1] << 4) | q[:, 2]
@@ -107,11 +106,11 @@ def _dominant_color(roi: np.ndarray) -> tuple[int, int, int]:
 
 def _group_by_color(colors: list[tuple[int, int, int]],
                     tolerance: float) -> tuple[list[int], list[tuple[int, int, int]]]:
-    """Agrupa colores por cercania en Lab. Devuelve (id por celda, color por id).
+    """Group colors by proximity in Lab. Returns (id per cell, color per id).
 
-    Nearest-centroid incremental en vez de k-means: los colores son planos y no
-    se sabe de antemano cuantas regiones hay (comprobar que salen N es
-    justamente una de las validaciones).
+    Incremental nearest-centroid rather than k-means: the colors are flat, and
+    the number of regions is not known up front — checking that it comes out as
+    N is precisely one of the validations.
     """
     swatches = np.array(colors, dtype=np.uint8).reshape(-1, 1, 3)
     lab = cv2.cvtColor(swatches, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(float)
@@ -137,11 +136,11 @@ def _group_by_color(colors: list[tuple[int, int, int]],
 
 
 def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
-    """Localiza el contorno del marco exterior. Devuelve (indice, contornos, jerarquia).
+    """Locate the outer frame contour. Returns (index, contours, hierarchy).
 
-    Se apoya en RETR_CCOMP: como las lineas interiores tocan el marco, el tablero
-    entero es un unico contorno de nivel 0 y sus celdas son sus agujeros. Contar
-    agujeros es lo que lo distingue de cualquier otro cuadrado oscuro.
+    It leans on RETR_CCOMP: because the inner lines touch the frame, the whole
+    board is a single top-level contour and its cells are its holes. Counting
+    holes is what separates it from any other dark square.
     """
     contours, hierarchy = cv2.findContours(dark, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)[-2:]
     hierarchy = hierarchy[0]
@@ -156,11 +155,11 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
     survivors, notes = [], []
 
     for i, h in enumerate(hierarchy):
-        if h[3] != -1:                       # solo contornos de nivel 0
+        if h[3] != -1:                       # top-level contours only
             continue
         contour = contours[i]
         area = cv2.contourArea(contour)
-        if area < 500:                       # ruido, ni se comenta
+        if area < 500:                       # noise, not even worth reporting
             continue
         x, y, w, hh = cv2.boundingRect(contour)
         approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
@@ -170,29 +169,29 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
 
         reason = None
         if area < min_area:
-            reason = f"area {area:.0f} < 2% de la imagen"
+            reason = f"area {area:.0f} < 2% of the image"
         elif len(approx) != 4:
-            reason = f"{len(approx)} vertices, no 4"
+            reason = f"{len(approx)} vertices, not 4"
         elif not cv2.isContourConvex(approx):
-            reason = "no convexo"
+            reason = "not convex"
         elif not 0.9 <= aspect <= 1.1:
-            reason = f"aspect ratio {aspect:.2f} fuera de [0.9, 1.1]"
+            reason = f"aspect ratio {aspect:.2f} outside [0.9, 1.1]"
         elif solidity <= 0.9:
-            reason = f"solidez {solidity:.2f} <= 0.90"
+            reason = f"solidity {solidity:.2f} <= 0.90"
         elif holes < MIN_HOLES:
-            reason = f"solo {holes} agujeros, se piden {MIN_HOLES}"
+            reason = f"only {holes} holes, {MIN_HOLES} required"
 
         color = (0, 0, 255) if reason else (0, 170, 0)
         cv2.drawContours(overlay, [approx], -1, color, 2)
-        _label(overlay, reason or f"CANDIDATO ok, {holes} agujeros", (x + 4, max(14, y - 6)), color)
-        notes.append(f"({x},{y}) {w}x{hh}  AR={aspect:.2f} solidez={solidity:.2f} "
-                     f"agujeros={holes}  ->  {reason or 'ACEPTADO'}")
+        _label(overlay, reason or f"CANDIDATE ok, {holes} holes", (x + 4, max(14, y - 6)), color)
+        notes.append(f"({x},{y}) {w}x{hh}  AR={aspect:.2f} solidity={solidity:.2f} "
+                     f"holes={holes}  ->  {reason or 'ACCEPTED'}")
 
         if reason is None:
             survivors.append((area, i))
 
-    rec.add("4. Contornos candidatos", overlay,
-            ["Cada contorno de nivel 0 con su veredicto:", *notes])
+    rec.add("4. Candidate contours", overlay,
+            ["Every top-level contour with its verdict:", *notes])
 
     if not survivors:
         return None, contours, hierarchy
@@ -200,53 +199,53 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
 
 
 def detect(img: np.ndarray, debug: bool = True) -> Detection:
-    """Detecta el tablero de Queens en una imagen BGR."""
+    """Detect the Queens board in a BGR image."""
     rec = _Recorder(debug)
 
     def fail(msg: str) -> Detection:
         return Detection(None, rec.stages, msg)
 
     if img is None or img.ndim != 3:
-        return fail("La imagen no es BGR valida.")
+        return fail("The image is not valid BGR.")
 
     rec.add("1. Original", img, [f"{img.shape[1]} x {img.shape[0]} px"])
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     _, dark = cv2.threshold(gray, DARK_THRESHOLD, 255, cv2.THRESH_BINARY_INV)
-    rec.add("2. Mascara de oscuros", dark,
-            [f"Pixeles con gris < {DARK_THRESHOLD}: {int(dark.sum() // 255)}",
-             "El marco es casi negro; la pagina esta por encima de 200."])
+    rec.add("2. Dark mask", dark,
+            [f"Pixels with gray < {DARK_THRESHOLD}: {int(dark.sum() // 255)}",
+             "The frame is nearly black; the page sits above 200."])
 
     dark = cv2.morphologyEx(dark, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-    rec.add("3. Tras MORPH_CLOSE", dark,
-            ["Cierra los huecos que deja el antialias de las lineas,",
-             "para que el marco sea un contorno continuo."])
+    rec.add("3. After MORPH_CLOSE", dark,
+            ["Closes the gaps left by the antialiasing of the lines,",
+             "so that the frame becomes one continuous contour."])
 
     board_idx, contours, hierarchy = _find_board(dark, img, rec)
     if board_idx is None:
-        return fail("Ningun contorno parece un tablero (ver etapa 4).")
+        return fail("No contour looks like a board (see stage 4).")
 
     bx, by, bw, bh = cv2.boundingRect(contours[board_idx])
     frame = img.copy()
     cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 170, 0), 2)
-    rec.add("5. Cuadrado exterior", frame,
-            [f"Marco en ({bx},{by}), {bw}x{bh} px"])
+    rec.add("5. Outer square", frame,
+            [f"Frame at ({bx},{by}), {bw}x{bh} px"])
 
-    rec.add("6. Recorte del tablero", img[by:by + bh, bx:bx + bw],
-            ["El tablero aislado del resto de la captura."])
+    rec.add("6. Board crop", img[by:by + bh, bx:bx + bw],
+            ["The board isolated from the rest of the screenshot."])
 
-    # --- celdas: son los agujeros del contorno del marco --------------------
+    # --- cells: they are the holes of the frame contour ---------------------
     holes = [contours[i] for i, h in enumerate(hierarchy) if h[3] == board_idx]
     if not holes:
-        return fail("El marco no contiene celdas.")
+        return fail("The frame contains no cells.")
 
     rects = np.array([cv2.boundingRect(c) for c in holes])
     areas = rects[:, 2] * rects[:, 3]
-    rects = rects[areas > 0.3 * np.median(areas)]       # descarta astillas del antialias
+    rects = rects[areas > 0.3 * np.median(areas)]       # drop antialiasing slivers
 
     n = int(round(len(rects) ** 0.5))
     if n * n != len(rects) or n < 4:
-        return fail(f"{len(rects)} celdas detectadas: no es un cuadrado NxN plausible.")
+        return fail(f"{len(rects)} cells detected: not a plausible NxN square.")
 
     cx = rects[:, 0] + rects[:, 2] / 2
     cy = rects[:, 1] + rects[:, 3] / 2
@@ -254,8 +253,8 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
     col_centers = _cluster_1d(cx, gap)
     row_centers = _cluster_1d(cy, gap)
     if len(col_centers) != n or len(row_centers) != n:
-        return fail(f"La rejilla no es {n}x{n}: "
-                    f"{len(col_centers)} columnas y {len(row_centers)} filas.")
+        return fail(f"The grid is not {n}x{n}: "
+                    f"{len(col_centers)} columns and {len(row_centers)} rows.")
 
     cells = np.zeros((n, n, 4), dtype=np.int32)
     for (x, y, w, h) in rects:
@@ -263,20 +262,20 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
         row = int(np.argmin([abs(y + h / 2 - c) for c in row_centers]))
         cells[row, col] = (x, y, w, h)
     if (cells[:, :, 2] == 0).any():
-        return fail("Hay posiciones de la rejilla sin celda asignada.")
+        return fail("Some grid position has no cell assigned to it.")
 
     grid = img.copy()
     for row in range(n):
         for col in range(n):
             x, y, w, h = cells[row, col]
             cv2.rectangle(grid, (x, y), (x + w, y + h), (255, 0, 255), 1)
-    rec.add("7. Rejilla de celdas", grid,
-            [f"N = {n} (de {len(rects)} agujeros del marco)",
-             f"Lado medio de celda: {cells[:, :, 2].mean():.1f} px",
-             "Las celdas salen de los agujeros del contorno, no de una",
-             "division aritmetica: cada una es la que OpenCV encontro."])
+    rec.add("7. Cell grid", grid,
+            [f"N = {n} (from {len(rects)} holes in the frame)",
+             f"Mean cell side: {cells[:, :, 2].mean():.1f} px",
+             "Cells come from the contour's holes, not from an arithmetic",
+             "division: each one is what OpenCV actually found."])
 
-    # --- color de cada celda ------------------------------------------------
+    # --- color of each cell -------------------------------------------------
     sampling = img.copy()
     colors: list[tuple[int, int, int]] = []
     for row in range(n):
@@ -289,12 +288,12 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
             cv2.rectangle(sampling, (x + mx, y + my), (x + w - mx, y + h - my), (0, 0, 0), 1)
             cv2.rectangle(sampling, (x + mx + 1, y + my + 1),
                           (x + mx + 10, y + my + 10), color, -1)
-    rec.add("8. Muestreo de color", sampling,
-            ["ROI del 60% central de cada celda, para no coger el borde.",
-             "Se toma la moda cuantizada, no la media: asi una reina o una",
-             "cruz ya dibujada no altera el color de la celda."])
+    rec.add("8. Color sampling", sampling,
+            ["ROI of the central 60% of each cell, to avoid the border.",
+             "The quantized mode is used rather than the mean, so a queen or",
+             "a cross already drawn does not alter the cell's color."])
 
-    # --- regiones -----------------------------------------------------------
+    # --- regions ------------------------------------------------------------
     ids, palette = _group_by_color(colors, COLOR_TOLERANCE)
     region = np.array(ids, dtype=np.int32).reshape(n, n)
 
@@ -304,16 +303,16 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
             x, y, w, h = cells[row, col]
             _label(regions_img, str(region[row, col]),
                    (x + w // 2 - 4, y + h // 2 + 5), (0, 0, 0))
-    rec.add("9. Regiones", regions_img,
-            [f"{len(palette)} regiones agrupadas en Lab (tolerancia {COLOR_TOLERANCE}).",
+    rec.add("9. Regions", regions_img,
+            [f"{len(palette)} regions grouped in Lab (tolerance {COLOR_TOLERANCE}).",
              *[f"  region {i}: BGR {c}" for i, c in enumerate(palette)]])
 
     board = Board(n=n, region=region, colors=palette, cells=cells)
 
     if len(palette) != n:
-        return fail(f"Se esperaban {n} regiones y salieron {len(palette)}.")
+        return fail(f"Expected {n} regions but got {len(palette)}.")
     if not board.regions_are_connected():
-        return fail("Alguna region no es conexa: el agrupamiento de colores ha fallado.")
+        return fail("Some region is not connected: the color grouping failed.")
 
     borders = img.copy()
     for row in range(n):
@@ -329,17 +328,17 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
                     cv2.line(borders, p0, p1, (0, 0, 0), 3)
                 else:
                     cv2.line(borders, p0, p1, (160, 160, 160), 1)
-    rec.add("10. Fronteras", borders,
-            ["Trazo grueso donde cambia de region, fino donde no.",
-             "Es la entrada final del modelo, y lo que hace que el tablero",
-             "se lea como el de LinkedIn y no como una rejilla uniforme."])
+    rec.add("10. Borders", borders,
+            ["Thick stroke where the region changes, thin where it does not.",
+             "This is the model's final input, and what makes the board read",
+             "like LinkedIn's rather than like a uniform grid."])
 
     return Detection(board, rec.stages)
 
 
 def detect_file(path: str, debug: bool = True) -> Detection:
-    """Detecta el tablero de un fichero de imagen."""
+    """Detect the board in an image file."""
     img = cv2.imread(str(path))
     if img is None:
-        return Detection(None, [], f"No se pudo leer la imagen: {path}")
+        return Detection(None, [], f"Could not read the image: {path}")
     return detect(img, debug)

@@ -1,1 +1,1 @@
-"""Queens de LinkedIn: deteccion con OpenCV, solver por backtracking y juego."""
+"""LinkedIn Queens: OpenCV detection, backtracking solver and gameplay."""

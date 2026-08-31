@@ -1,39 +1,38 @@
-# Queens de LinkedIn — visión, solver y paso a paso
+# LinkedIn Queens — vision, solver and step-by-step
 
-Lee un tablero del juego **Queens** de LinkedIn desde un PNG o una captura de
-pantalla, lo detecta con **OpenCV**, lo resuelve por **backtracking** y deja
-jugarlo.
+Reads a board of LinkedIn's **Queens** puzzle from a PNG or a screenshot,
+detects it with **OpenCV**, solves it by **backtracking**, and lets you play it.
 
-El objetivo no es solo resolverlo: es **verlo resolver**. Nada debe ser una caja
-negra, así que el proyecto tiene dos paneles observables — uno para ver cómo se
-genera la entrada digital a partir de la imagen, y otro para ver el backtracking
-avanzar y retroceder paso a paso sobre el tablero.
+The goal is not just to solve it: it is to **watch it being solved**. Nothing
+should be a black box, so the project has two observable panels — one to see how
+the digital input is derived from the image, and another to watch the
+backtracking move forward and backtrack, step by step, on the board.
 
-## Estado
+## Status
 
-| Parte | Estado |
+| Part | Status |
 |---|---|
-| Detección con OpenCV (`queens/vision.py`) | funcionando sobre las tres capturas de `doc/` |
-| Modelo de tablero (`queens/board.py`) | hecho |
-| Solver por backtracking | pendiente |
-| Interfaz PySide6 (3 pestañas) | pendiente |
+| OpenCV detection (`queens/vision.py`) | working on the three screenshots in `doc/` |
+| Board model (`queens/board.py`) | done |
+| Backtracking solver | pending |
+| PySide6 interface (3 tabs) | pending |
 
-## Cómo funciona la detección
+## How the detection works
 
-El tablero es un marco negro grueso sobre fondo claro, y las líneas interiores
-tocan el marco: con `RETR_CCOMP` el tablero entero sale como **un único contorno**
-y **sus celdas son sus agujeros**. Contar agujeros es lo que lo distingue de
-cualquier otro cuadrado oscuro de la captura — y hace falta, porque el contorno
-más grande de la imagen **no** es el tablero, sino el chrome del navegador, que
-pasa los filtros de forma (aspect ratio 1.08, solidez 1.00, 4 vértices) y solo cae
-por tener 12 agujeros en vez de 81.
+The board is a thick black frame on a light background, and its inner lines
+touch that frame: with `RETR_CCOMP` the whole board comes out as **a single
+contour** whose **holes are its cells**. Counting holes is what tells it apart
+from any other dark square in the screenshot — and it is needed, because the
+largest contour in the image is **not** the board but the browser chrome, which
+passes every shape filter (aspect ratio 1.08, solidity 1.00, 4 vertices) and is
+rejected only for having 12 holes instead of 81.
 
-El color de cada celda se toma como **moda cuantizada** del 60 % central, no como
-media: así una reina o una cruz ya dibujada no altera el color. Las regiones se
-agrupan por cercanía en Lab, y el resultado se valida antes de devolverse — deben
-salir exactamente N regiones y cada una debe ser conexa.
+Each cell's color is the **quantized mode** of its central 60 %, not the mean,
+so a queen or a cross already drawn on the board does not skew it. Regions are
+grouped by proximity in Lab, and the result is validated before being returned:
+there must be exactly N regions and each one must be connected.
 
-## Instalación
+## Install
 
 ```bat
 python -m venv .venv
@@ -41,17 +40,17 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Capturas de prueba
+## Test screenshots
 
-`doc/Example1..3.png` son el mismo tablero 9×9 recortado de tres formas
-distintas. La prueba de la detección es que las tres produzcan **la misma**
-matriz de regiones. Están saneadas: sin avatar ni badge de notificaciones.
+`doc/Example1..3.png` are the same 9×9 board cropped three different ways. The
+detection test is that all three yield **the same** region matrix. They have
+been sanitized: no avatar, no notification badge.
 
-## Reglas del juego
+## Rules of the game
 
-1. Exactamente una reina por fila.
-2. Exactamente una por columna.
-3. Exactamente una por región de color.
-4. Dos reinas no pueden tocarse, **ni siquiera en diagonal** — pero sí pueden
-   compartir diagonal a distancia ≥ 2. Esta es la diferencia con el problema
-   clásico de las N reinas.
+1. Exactly one queen per row.
+2. Exactly one per column.
+3. Exactly one per color region.
+4. Two queens may not touch, **not even diagonally** — but they may share a
+   diagonal at distance ≥ 2. This is the difference from the classic N-queens
+   problem.

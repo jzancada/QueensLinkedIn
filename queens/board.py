@@ -1,4 +1,4 @@
-"""Modelo del tablero: regiones, colores, fronteras y estado de juego."""
+"""Board model: regions, colors, borders and play state."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 
 
 class Mark(IntEnum):
-    """Lo que el jugador ha puesto en una celda."""
+    """What the player has placed on a cell."""
 
     EMPTY = 0
     CROSS = 1
@@ -18,28 +18,28 @@ class Mark(IntEnum):
 
 @dataclass
 class Board:
-    """Un tablero de Queens ya digitalizado.
+    """A digitized Queens board.
 
-    `region` guarda el id de region de cada celda y es lo unico que necesita el
-    solver. `colors` y `cells` vienen de la deteccion y solo los usa la interfaz:
-    los colores para pintar y los rectangulos para que el inspector del panel de
-    vision pueda traducir un punto de la imagen a una celda.
+    `region` holds the region id of every cell and is all the solver needs.
+    `colors` and `cells` come from the detection and are only used by the
+    interface: the colors to paint, and the rectangles so that the vision
+    panel's inspector can translate a point of the image back to a cell.
     """
 
     n: int
-    region: np.ndarray                      # (n, n) int, id de region por celda
-    colors: list[tuple[int, int, int]]      # BGR por region
-    cells: np.ndarray | None = None         # (n, n, 4) rect x,y,w,h en la imagen
+    region: np.ndarray                      # (n, n) int, region id per cell
+    colors: list[tuple[int, int, int]]      # BGR per region
+    cells: np.ndarray | None = None         # (n, n, 4) rect x,y,w,h in the image
     marks: np.ndarray = field(init=False)   # (n, n) Mark
 
     def __post_init__(self) -> None:
         self.marks = np.full((self.n, self.n), Mark.EMPTY, dtype=np.uint8)
 
     def is_border(self, row: int, col: int, drow: int, dcol: int) -> bool:
-        """¿Hay frontera de region entre esta celda y la vecina indicada?
+        """Is there a region border between this cell and the given neighbour?
 
-        Fuera del tablero cuenta como frontera: el borde exterior se dibuja
-        grueso igual que las fronteras interiores.
+        Off-board counts as a border: the outer edge is drawn thick, just like
+        the inner region borders.
         """
         r, c = row + drow, col + dcol
         if not (0 <= r < self.n and 0 <= c < self.n):
@@ -47,14 +47,14 @@ class Board:
         return bool(self.region[row, col] != self.region[r, c])
 
     def region_sizes(self) -> np.ndarray:
-        """Numero de celdas de cada region, indexado por id."""
+        """Number of cells in each region, indexed by id."""
         return np.bincount(self.region.ravel(), minlength=len(self.colors))
 
     def regions_are_connected(self) -> bool:
-        """¿Toda region forma una sola pieza conexa (vecindad de 4)?
+        """Does every region form a single connected piece (4-neighbourhood)?
 
-        Una region partida en dos trozos delata que el agrupamiento de colores
-        ha unido regiones distintas que casualmente se parecen.
+        A region split into two pieces betrays that the color grouping has
+        merged distinct regions that happen to look alike.
         """
         for rid in range(len(self.colors)):
             cells = np.argwhere(self.region == rid)
