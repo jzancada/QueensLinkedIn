@@ -69,6 +69,47 @@ class Board:
         for row, col in enumerate(queens):
             self.marks[row, col] = Mark.QUEEN
 
+    def queens(self) -> list[tuple[int, int]]:
+        """Every cell the player has put a queen on, top to bottom."""
+        return [(int(r), int(c)) for r, c in np.argwhere(self.marks == Mark.QUEEN)]
+
+    def conflicts(self) -> list[tuple[tuple[int, int], tuple[int, int], str]]:
+        """Pairs of queens that break a rule, with the rule they break.
+
+        The solver's `conflict()` cannot be reused here: it assumes one queen
+        per row, placed top to bottom, which is true of a search state but not
+        of a board being played, where two queens may well sit in the same row.
+
+        Only the first rule broken by a pair is reported — a message per pair,
+        not per rule, is what the player can act on.
+        """
+        found = []
+        placed = self.queens()
+        for i, (row, col) in enumerate(placed):
+            for other in placed[i + 1:]:
+                orow, ocol = other
+                if row == orow:
+                    reason = f"row {row} has two queens"
+                elif col == ocol:
+                    reason = f"column {col} has two queens"
+                elif abs(row - orow) <= 1 and abs(col - ocol) <= 1:
+                    reason = "two queens touch"
+                elif self.region[row, col] == self.region[orow, ocol]:
+                    reason = f"region {int(self.region[row, col])} has two queens"
+                else:
+                    continue
+                found.append(((row, col), other, reason))
+        return found
+
+    def is_solved(self) -> bool:
+        """N queens and no conflict at all — which is the whole of the rules.
+
+        One per row, per column and per region does not need checking on top:
+        with N queens and no two sharing any of the three, there is one in each
+        by counting alone.
+        """
+        return len(self.queens()) == self.n and not self.conflicts()
+
     def region_sizes(self) -> np.ndarray:
         """Number of cells in each region, indexed by id."""
         return np.bincount(self.region.ravel(), minlength=len(self.colors))

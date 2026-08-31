@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from queens.board import Board, Mark
+from queens.board import Mark
 from queens.solver import (StepKind, conflict, is_solution, render, solve,
                            solve_steps, stranded)
 from queens.vision import detect_file
@@ -50,14 +49,7 @@ TWO_REGIONS_ONE_COLUMN = ["ACCC",
                           "BDDD"]
 
 
-def make_board(rows: list[str]) -> Board:
-    """Build a board from region letters, one string per row."""
-    letters = sorted({ch for row in rows for ch in row})
-    region = np.array([[letters.index(ch) for ch in row] for row in rows], dtype=np.int32)
-    return Board(n=len(rows), region=region, colors=[(0, 0, 0)] * len(letters))
-
-
-def test_solves_a_small_board():
+def test_solves_a_small_board(make_board):
     board = make_board(FOUR_QUADRANTS)
     queens = solve(board)
 
@@ -77,7 +69,7 @@ def test_solves_the_detected_board():
     assert is_solution(result.board, queens)
 
 
-def test_an_unsolvable_board_is_reported_not_faked():
+def test_an_unsolvable_board_is_reported_not_faked(make_board):
     board = make_board(TWO_REGIONS_ONE_COLUMN)
     assert solve(board) is None
 
@@ -86,7 +78,7 @@ def test_an_unsolvable_board_is_reported_not_faked():
     assert not any(s.kind is StepKind.SOLVED for s in steps)
 
 
-def test_queens_may_share_a_diagonal_at_distance_two():
+def test_queens_may_share_a_diagonal_at_distance_two(make_board):
     """The rule that separates this from the classic N-queens problem."""
     board = make_board(FOUR_QUADRANTS)
 
@@ -99,7 +91,7 @@ def test_queens_may_share_a_diagonal_at_distance_two():
     (1, 1, "touches"),       # diagonal neighbour
     (2, 2, "region"),        # region A again, two rows away
 ])
-def test_every_rejection_names_the_rule_it_broke(row, col, expected):
+def test_every_rejection_names_the_rule_it_broke(row, col, expected, make_board):
     """The reason is what the solver panel displays, so it must be specific."""
     board = make_board(L_SHAPED)
     reason = conflict(board, [0], row, col)
@@ -107,7 +99,7 @@ def test_every_rejection_names_the_rule_it_broke(row, col, expected):
     assert reason is not None and expected in reason
 
 
-def test_the_trace_can_be_replayed_onto_the_board():
+def test_the_trace_can_be_replayed_onto_the_board(make_board):
     """Each step carries the state after it, which is what lets the panel animate.
 
     Replaying only the snapshots must reproduce the search exactly, with no
@@ -133,7 +125,7 @@ def test_the_trace_can_be_replayed_onto_the_board():
     assert is_solution(board, steps[-1].queens)
 
 
-def test_pruning_does_not_change_the_answer():
+def test_pruning_does_not_change_the_answer(make_board):
     """A prune may only remove branches that hold no solution.
 
     So the first solution in depth-first order is the very same one, and this
@@ -158,7 +150,7 @@ def test_pruning_cuts_the_search_by_an_order_of_magnitude():
     assert attempts(prune=True) * 10 < attempts(prune=False)
 
 
-def test_a_stranded_region_is_spotted_before_the_search_finds_out():
+def test_a_stranded_region_is_spotted_before_the_search_finds_out(make_board):
     """Region C is a single cell, so one queen in its column strands it."""
     board = make_board(ONE_CELL_REGION)
 
@@ -167,7 +159,7 @@ def test_a_stranded_region_is_spotted_before_the_search_finds_out():
     assert "region 2" in (stranded(board, [3]) or "")    # C is the third letter
 
 
-def test_a_stranded_column_is_spotted_too():
+def test_a_stranded_column_is_spotted_too(make_board):
     """The dual of the region check, and it falls out of the same sweep.
 
     Region A owns the whole of column 0, so the queen that takes A anywhere
@@ -195,7 +187,7 @@ def test_a_prune_reads_as_a_queen_placed_and_withdrawn():
         assert steps[i - 1].queens[-1] == step.col
 
 
-def test_the_solution_can_be_dropped_on_the_board():
+def test_the_solution_can_be_dropped_on_the_board(make_board):
     board = make_board(FOUR_QUADRANTS)
     queens = solve(board)
 
@@ -205,7 +197,7 @@ def test_the_solution_can_be_dropped_on_the_board():
         assert board.marks[row, col] == Mark.QUEEN
 
 
-def test_render_shows_the_regions_and_the_queens():
+def test_render_shows_the_regions_and_the_queens(make_board):
     board = make_board(FOUR_QUADRANTS)
     assert render(board).splitlines()[0] == "A A B B"
 

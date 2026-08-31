@@ -280,6 +280,72 @@ def test_the_play_tab_cycles_a_cell_through_the_three_marks(window):
     assert "1 of 9 queens" in play.caption.text()
 
 
+def test_the_player_is_told_which_rule_was_broken(window):
+    window.load(DOC / "Example3.png")
+    play = window.play
+
+    for cell in ((0, 0), (1, 1)):                # diagonal neighbours
+        play.cycle_mark(*cell)
+        play.cycle_mark(*cell)                   # cross, then queen
+
+    assert "two queens touch" in play.caption.text()
+    assert play.view._errors == {(0, 0), (1, 1)}
+
+
+def test_an_illegal_queen_is_flagged_but_not_forbidden(window):
+    """Being told what is wrong is the help; taking the move away is not."""
+    window.load(DOC / "Example3.png")
+    play = window.play
+    board = window.detection.board
+
+    for cell in ((0, 0), (0, 4)):                # two queens in row 0
+        play.cycle_mark(*cell)
+        play.cycle_mark(*cell)
+
+    assert board.marks[0, 0] == Mark.QUEEN and board.marks[0, 4] == Mark.QUEEN
+    assert "row 0 has two queens" in play.caption.text()
+
+
+def test_solving_the_board_by_hand_is_recognised(window):
+    window.load(DOC / "Example3.png")
+    play = window.play
+
+    play.reveal()
+
+    assert play.board.is_solved()
+    assert "Solved" in play.caption.text()
+    assert play.view._errors == set()
+
+
+def test_a_hint_places_a_queen_of_the_solution(window):
+    window.load(DOC / "Example3.png")
+    play = window.play
+
+    play.hint()
+
+    queens = play.board.queens()
+    assert len(queens) == 1
+    row, col = queens[0]
+    assert play.solution()[row] == col
+    assert f"({row}, {col})" in play.caption.text()
+
+
+def test_a_hint_points_out_a_wrong_queen_before_adding_more(window):
+    """Piling correct queens on top of a mistake is no help at all."""
+    window.load(DOC / "Example3.png")
+    play = window.play
+
+    wrong_col = (play.solution()[0] + 1) % 9
+    play.cycle_mark(0, wrong_col)
+    play.cycle_mark(0, wrong_col)
+
+    play.hint()
+
+    assert len(play.board.queens()) == 1         # nothing was added
+    assert f"({0}, {wrong_col}) is not in the solution" in play.caption.text()
+    assert play.view._errors == {(0, wrong_col)}
+
+
 def _center(view, row, col):
     center = view.cell_rect(row, col).center()
     return center.x(), center.y()

@@ -15,7 +15,7 @@ backtracking move forward and backtrack, step by step, on the board.
 | OpenCV detection (`queens/vision.py`) | working, and stable from 0.5× to 3× rescaling |
 | Board model (`queens/board.py`) | done |
 | Backtracking solver (`queens/solver.py`) | working, and every step is observable |
-| PySide6 interface (`queens/ui/`) | step 4 of 5: vision and solver panels; the board plays without rules yet |
+| PySide6 interface (`queens/ui/`) | done: the three panels |
 
 ## How the detection works
 
@@ -73,14 +73,19 @@ pytest Test Explorer; accept the recommended extensions when prompted.
 
 ## Running
 
-The interface is being built one panel at a time. The vision panel walks the
-ten stages with their notes, and a click on the image names the cell underneath
-— region, color and rectangle. The solver panel plays the search on the board,
-at any speed or one step at a time, coloring the cell each step is about and
-saying why it was rejected or cut; the checkbox turns the look-ahead off, which
-is the comparison the panel exists to make watchable. The third tab draws the
-board to play, where a click crosses a cell out, another turns it into a queen
-and a third clears it:
+The three panels are the three ways of looking at the same board:
+
+1. **Vision** — the ten stages with their notes, and a click on the image names
+   the cell underneath: region, color and rectangle.
+2. **Solver** — the search played on the board, at any speed or one step at a
+   time, coloring the cell each step is about and saying why it was rejected or
+   cut. The checkbox turns the look-ahead off, which is the comparison the
+   panel exists to make watchable.
+3. **Play** — the board to solve by hand: a click crosses a cell out, another
+   turns it into a queen, a third clears it. Every change is judged at once and
+   the queens breaking a rule are washed in red, with the rule named. Nothing
+   is forbidden — an illegal queen can be placed and left there. *Hint* points
+   out a wrong queen if there is one, and only otherwise adds a right one.
 
 ```bat
 python -m queens.ui

@@ -27,6 +27,8 @@ FOCUS_COLORS = {
 BORDER = QColor("#111111")
 GRID = QColor(0, 0, 0, 60)
 MARK = QColor("#1a1a1a")
+ERROR = QColor("#d64545")
+ERROR_WASH = QColor(214, 69, 69, 90)
 
 
 def _qcolor(bgr) -> QColor:
@@ -42,12 +44,19 @@ class BoardView(QWidget):
         super().__init__()
         self.board: Board | None = None
         self._focus: tuple[int, int, str] | None = None
+        self._errors: set[tuple[int, int]] = set()
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMinimumSize(240, 240)
 
     def set_board(self, board: Board | None) -> None:
         self.board = board
         self._focus = None
+        self._errors = set()
+        self.update()
+
+    def set_errors(self, cells) -> None:
+        """Wash these cells in red: they are the queens breaking a rule."""
+        self._errors = set(cells)
         self.update()
 
     def set_focus(self, row: int, col: int, kind: str) -> None:
@@ -109,6 +118,13 @@ class BoardView(QWidget):
                 rect = self.cell_rect(row, col)
                 painter.fillRect(rect, _qcolor(board.colors[int(board.region[row, col])]))
                 self._draw_mark(painter, rect, Mark(board.marks[row, col]))
+
+        for row, col in self._errors:
+            rect = self.cell_rect(row, col)
+            painter.fillRect(rect, ERROR_WASH)
+            painter.setPen(QPen(ERROR, max(2, self.cell_size() // 16)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(rect.adjusted(2, 2, -2, -2))
 
         # Borders last, so no fill of a neighbouring cell paints over them.
         for row in range(board.n):
