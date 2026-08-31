@@ -19,10 +19,35 @@ pytest.importorskip("PySide6")
 from PySide6.QtCore import QPoint, QSize                    # noqa: E402
 from PySide6.QtWidgets import QApplication                  # noqa: E402
 
+from queens.board import Board, Mark                        # noqa: E402
+from queens.ui.board_view import BoardView                  # noqa: E402
 from queens.ui.image_view import ImageView, to_qimage       # noqa: E402
 from queens.ui.main_window import MainWindow                # noqa: E402
 
 DOC = Path(__file__).resolve().parent.parent / "doc"
+
+# Four quadrants in four unmistakable colors, so a painted pixel can be traced
+# back to the region it came from.
+QUADRANTS = Board(
+    n=4,
+    region=np.array([[0, 0, 1, 1], [0, 0, 1, 1],
+                     [2, 2, 3, 3], [2, 2, 3, 3]], dtype=np.int32),
+    colors=[(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255)],   # BGR
+)
+
+
+@pytest.fixture
+def board_view(app):
+    """A 400x400 view of the quadrant board, painted and ready to sample."""
+    view = BoardView()
+    view.resize(400, 400)
+    view.set_board(QUADRANTS)
+    QUADRANTS.marks[:] = Mark.EMPTY
+    return view
+
+
+def pixel(view, x, y):
+    return view.grab().toImage().pixelColor(x, y).getRgb()[:3]
 
 
 @pytest.fixture(scope="module")
@@ -125,6 +150,65 @@ def test_the_image_keeps_its_aspect_ratio_and_maps_clicks_back(app):
     assert view.image_pos(QPoint(0, 0)) is None                 # outside the image
     assert view.image_pos(rect.topLeft()) == (0, 0)
     assert view.image_pos(rect.topLeft() + QPoint(200, 100)) == (100, 50)
+
+
+def test_the_board_is_painted_in_its_region_colors(board_view):
+    """BGR from OpenCV, RGB in Qt: swapping them here would repaint the board."""
+    center = board_view.cell_rect(0, 0).center()
+    assert pixel(board_view, center.x(), center.y()) == (255, 0, 0)      # BGR blue
+
+    center = board_view.cell_rect(3, 3).center()
+    assert pixel(board_view, center.x(), center.y()) == (255, 255, 0)    # BGR yellow
+
+
+def test_region_borders_are_thick_and_inner_lines_are_not(board_view):
+    """What makes the board read as LinkedIn's rather than as a plain grid."""
+    rect = board_view.cell_rect(0, 1)
+    quarter = rect.height() // 4
+
+    # Between (0,1) and (0,2) the region changes: black stroke, several px wide.
+    on_border = pixel(board_view, rect.right() + 1, rect.y() + quarter)
+    assert max(on_border) < 60
+
+    # Between (0,0) and (0,1) it does not: the hairline leaves the color visible.
+    inside = pixel(board_view, rect.x() + 1, rect.y() + quarter)
+    assert max(inside) > 120
+
+
+def test_a_queen_is_drawn_on_the_cell_that_has_one(board_view):
+    before = pixel(board_view, *_center(board_view, 1, 1))
+
+    QUADRANTS.marks[1, 1] = Mark.QUEEN
+    after = pixel(board_view, *_center(board_view, 1, 1))
+
+    assert before != after and max(after) < 60          # the crown is nearly black
+
+
+def test_clicking_maps_to_the_right_cell(board_view):
+    rect = board_view.cell_rect(2, 3)
+
+    assert board_view.cell_at(rect.center()) == (2, 3)
+    assert board_view.cell_at(rect.topLeft()) == (2, 3)
+    assert board_view.cell_at(QPoint(0, 0)) is None      # the margin around the board
+
+
+def test_the_play_tab_cycles_a_cell_through_the_three_marks(window):
+    window.load(DOC / "Example3.png")
+    play = window.play
+    board = window.detection.board
+
+    for expected in (Mark.CROSS, Mark.QUEEN, Mark.EMPTY):
+        play.cycle_mark(2, 3)
+        assert board.marks[2, 3] == expected
+
+    play.cycle_mark(2, 3)
+    play.cycle_mark(2, 3)
+    assert "1 of 9 queens" in play.caption.text()
+
+
+def _center(view, row, col):
+    center = view.cell_rect(row, col).center()
+    return center.x(), center.y()
 
 
 def test_an_opencv_image_survives_the_trip_to_qt():

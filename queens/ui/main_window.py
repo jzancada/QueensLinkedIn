@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QFileDialog, QLabel, QMainWindow, QTabWidget,
                                QVBoxLayout, QWidget)
 
 from ..vision import Detection, detect_file
+from .play_tab import PlayTab
 from .vision_tab import VisionTab
 
 DOC = Path(__file__).resolve().parent.parent.parent / "doc"
@@ -41,12 +42,13 @@ class MainWindow(QMainWindow):
         self.detection: Detection | None = None
 
         self.vision = VisionTab()
+        self.play = PlayTab()
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.vision, "1 · Vision")
         self.tabs.addTab(_placeholder("The solver panel goes here:\n"
                                       "the search, step by step."), "2 · Solver")
-        self.tabs.addTab(_placeholder("The board to play by hand goes here."), "3 · Play")
+        self.tabs.addTab(self.play, "3 · Play")
         self.setCentralWidget(self.tabs)
 
         open_action = QAction("&Open screenshot…", self)
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
 
         stages = self.detection.stages
         self.vision.show_detection(self.detection)
+        self.play.set_board(self.detection.board)
 
         if self.detection.ok:
             board = self.detection.board
