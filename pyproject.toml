@@ -7,6 +7,11 @@ requires-python = ">=3.11"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Put the project root on sys.path so `import queens` works no matter how pytest
+# is launched. `python -m pytest` adds the cwd on its own, but a bare `pytest`
+# -- which is how some editors run the suite -- does not, and collection fails
+# with ModuleNotFoundError.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
