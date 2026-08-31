@@ -14,7 +14,7 @@ backtracking move forward and backtrack, step by step, on the board.
 |---|---|
 | OpenCV detection (`queens/vision.py`) | working, and stable from 0.5× to 3× rescaling |
 | Board model (`queens/board.py`) | done |
-| Backtracking solver | pending |
+| Backtracking solver (`queens/solver.py`) | working, and every step is observable |
 | PySide6 interface (3 tabs) | pending |
 
 ## How the detection works
@@ -36,6 +36,18 @@ Each cell's color is the **quantized mode** of its central 60 %, not the mean,
 so a queen or a cross already drawn on the board does not skew it. Regions are
 grouped by proximity in Lab, and the result is validated before being returned:
 there must be exactly N regions and each one must be connected.
+
+## How the solver works
+
+Plain backtracking, filling one row at a time: a partial state is just the
+column chosen for each row so far, and the one-queen-per-row rule comes for
+free from that shape.
+
+What it adds is that the search is a **stream of steps** — every attempt, every
+rejection *with the rule it broke*, every queen placed and every one taken
+back. Each step carries the board state after it, so the solver panel will be
+able to animate the search by replaying the stream, with no bookkeeping of its
+own. `solve()` is the same search with the steps thrown away.
 
 ## Install
 
@@ -62,6 +74,17 @@ stage's notes. The two most informative are **`04_candidate_contours.png`**,
 where every candidate is labelled with the reason it was rejected, and
 **`10_borders.png`**, whose thick strokes should line up exactly with the real
 color boundaries.
+
+The solver reads a screenshot straight through the detection and prints the
+board twice, as regions and with the queens on it:
+
+```bat
+python -m queens.solver doc/Example3.png
+python -m queens.solver doc/Example3.png --trace
+```
+
+`--trace` prints every step of the search — thousands of lines for a 9×9
+board, which is exactly the point of showing it on a panel instead.
 
 ```bat
 python -m pytest

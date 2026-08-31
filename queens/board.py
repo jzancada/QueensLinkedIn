@@ -46,6 +46,17 @@ class Board:
             return True
         return bool(self.region[row, col] != self.region[r, c])
 
+    def set_queens(self, queens) -> None:
+        """Replace the marks with one queen per row, at the given columns.
+
+        `queens[r]` is the column of the queen in row r, the same shape the
+        solver works in, so a search state can be dropped on the board as is —
+        including a partial one, where the rows below are simply left empty.
+        """
+        self.marks[:] = Mark.EMPTY
+        for row, col in enumerate(queens):
+            self.marks[row, col] = Mark.QUEEN
+
     def region_sizes(self) -> np.ndarray:
         """Number of cells in each region, indexed by id."""
         return np.bincount(self.region.ravel(), minlength=len(self.colors))
