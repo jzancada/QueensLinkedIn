@@ -9,7 +9,7 @@ import pytest
 
 from queens.board import Board, Mark
 from queens.solver import (StepKind, conflict, is_solution, render, solve,
-                           solve_steps)
+                           solve_steps, stranded)
 from queens.vision import detect_file
 
 DOC = Path(__file__).resolve().parent.parent / "doc"
@@ -27,6 +27,20 @@ L_SHAPED = ["ABBB",
             "ABBB",
             "AAAC",
             "DDDC"]
+
+# Region C is the single cell (3,3): any queen in column 3 strands it, which is
+# the cheapest possible case for the look-ahead to catch.
+ONE_CELL_REGION = ["ABBB",
+                   "ABBB",
+                   "AABB",
+                   "DDDC"]
+
+# Region A swallows the whole of column 0: once its queen goes somewhere else,
+# that column has nowhere left to put one.
+COLUMN_INSIDE_A_REGION = ["AABB",
+                          "AABB",
+                          "ACCB",
+                          "ACDD"]
 
 # Regions A and B live inside column 0, so both need that column and neither
 # can have it. Unsolvable for a reason that has nothing to do with the size.
@@ -112,10 +126,73 @@ def test_the_trace_can_be_replayed_onto_the_board():
             assert len(step.queens) == step.row + 1
             # Nothing is ever placed on a cell that breaks a rule.
             assert conflict(board, step.queens[:-1], step.row, step.col) is None
-        elif step.kind in (StepKind.TRY, StepKind.REJECT, StepKind.BACKTRACK):
+        elif step.kind in (StepKind.TRY, StepKind.REJECT,
+                           StepKind.PRUNE, StepKind.BACKTRACK):
             assert len(step.queens) == step.row                  # the row is open
 
     assert is_solution(board, steps[-1].queens)
+
+
+def test_pruning_does_not_change_the_answer():
+    """A prune may only remove branches that hold no solution.
+
+    So the first solution in depth-first order is the very same one, and this
+    is the test that would catch a look-ahead that cuts too much.
+    """
+    board = make_board(FOUR_QUADRANTS)
+    assert solve(board, prune=True) == solve(board, prune=False)
+
+    result = detect_file(DOC / "Example3.png", debug=False)
+    assert result.ok, result.error
+    assert solve(result.board, prune=True) == solve(result.board, prune=False)
+
+
+def test_pruning_cuts_the_search_by_an_order_of_magnitude():
+    """The reason the look-ahead exists: a watchable trace, not a faster answer."""
+    result = detect_file(DOC / "Example3.png", debug=False)
+    assert result.ok, result.error
+
+    def attempts(prune):
+        return sum(s.kind is StepKind.TRY for s in solve_steps(result.board, prune))
+
+    assert attempts(prune=True) * 10 < attempts(prune=False)
+
+
+def test_a_stranded_region_is_spotted_before_the_search_finds_out():
+    """Region C is a single cell, so one queen in its column strands it."""
+    board = make_board(ONE_CELL_REGION)
+
+    assert stranded(board, []) is None
+    assert stranded(board, [0]) is None                  # C still reachable
+    assert "region 2" in (stranded(board, [3]) or "")    # C is the third letter
+
+
+def test_a_stranded_column_is_spotted_too():
+    """The dual of the region check, and it falls out of the same sweep.
+
+    Region A owns the whole of column 0, so the queen that takes A anywhere
+    else leaves that column with no cell it could still use.
+    """
+    board = make_board(COLUMN_INSIDE_A_REGION)
+    assert stranded(board, []) is None
+    assert "column 0" in (stranded(board, [1]) or "")
+
+
+def test_a_prune_reads_as_a_queen_placed_and_withdrawn():
+    """That is how the panel will show it: the move is legal, its future is not."""
+    result = detect_file(DOC / "Example3.png", debug=False)
+    assert result.ok, result.error
+
+    steps = list(solve_steps(result.board, prune=True))
+    prunes = [i for i, s in enumerate(steps) if s.kind is StepKind.PRUNE]
+    assert prunes
+
+    for i in prunes:
+        step = steps[i]
+        assert step.reason.split()[0] in ("region", "column")
+        assert len(step.queens) == step.row                     # the queen is gone
+        assert steps[i - 1].kind is StepKind.PLACE              # it had just landed
+        assert steps[i - 1].queens[-1] == step.col
 
 
 def test_the_solution_can_be_dropped_on_the_board():

@@ -49,6 +49,17 @@ back. Each step carries the board state after it, so the solver panel will be
 able to animate the search by replaying the stream, with no bookkeeping of its
 own. `solve()` is the same search with the steps thrown away.
 
+On top of that there is a **look-ahead**: after each placement, every region
+and every column that has no legal cell left in the rows below is already lost,
+so the branch is cut right there instead of thousands of attempts later. It
+shows in the trace as a queen placed and immediately withdrawn, with the reason
+attached — *`column 8 has no cell left in rows 4-8`*.
+
+On the 9×9 board of `doc/` that takes the search from **7299 attempts to 549**:
+the regions alone bring it down to 2151, and the columns do the rest. The point
+is not speed — the naive search is instant too — but a trace short enough to be
+watched. `--no-prune` runs it without, to compare.
+
 ## Install
 
 ```bat
@@ -81,10 +92,12 @@ board twice, as regions and with the queens on it:
 ```bat
 python -m queens.solver doc/Example3.png
 python -m queens.solver doc/Example3.png --trace
+python -m queens.solver doc/Example3.png --trace --no-prune
 ```
 
-`--trace` prints every step of the search — thousands of lines for a 9×9
-board, which is exactly the point of showing it on a panel instead.
+`--trace` prints every step of the search, each with the rule that rejected it
+or the region that stranded it — over a thousand lines for a 9×9 board even
+pruned, which is exactly the point of showing it on a panel instead.
 
 ```bat
 python -m pytest
