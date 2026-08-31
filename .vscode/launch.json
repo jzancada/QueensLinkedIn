@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Dump stages: Example3",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "queens.dump_stages",
+      "args": ["doc/Example3.png"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Dump stages: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "queens.dump_stages",
+      "args": ["${file}", "-o", "out/current"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

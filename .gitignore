@@ -11,6 +11,10 @@ __pycache__/
 # Stage dumps from queens.dump_stages
 out/
 
-# IDE
-.vscode/
+# IDE. .vscode/ is shared on purpose (interpreter, pytest, launch configs);
+# only the per-user files inside it are ignored.
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/

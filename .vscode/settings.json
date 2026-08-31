@@ -1,0 +1,25 @@
+{
+  // The interpreter of the project venv. Created with:
+  //   D:\producto\miniconda3\python.exe -m venv .venv
+  // (the `python` on PATH is msys2's and has no pip)
+  "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+  "python.terminal.activateEnvironment": true,
+
+  // Test Explorer runs pytest; the options live in pyproject.toml
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.extraPaths": ["${workspaceFolder}"],
+
+  "[python]": {
+    "editor.rulers": [100],
+    "editor.formatOnSave": false
+  },
+
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  }
+}

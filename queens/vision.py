@@ -27,6 +27,12 @@ DARK_THRESHOLD = 100
 # the runner-up (the browser chrome) only reaches 12.
 MIN_HOLES = 20
 
+# Maximum relative spread of a candidate's hole sizes. The board's holes are its
+# cells and all measure the same; a blob whose holes vary wildly is text, not a
+# grid. Needed because the browser chrome covers more area than the board and
+# would otherwise win on an upscaled screenshot.
+MAX_HOLE_SPREAD = 0.25
+
 # Maximum distance in OpenCV's 8-bit Lab space for two cells to count as the
 # same region. In the doc/ screenshots sampling yields identical colors within a
 # region, and the closest pair of regions (purple and pink) sits at 23.4: we
@@ -135,6 +141,30 @@ def _group_by_color(colors: list[tuple[int, int, int]],
     return ids, palette
 
 
+def _hole_spread(hole_rects: list[tuple[int, int, int, int]]) -> float:
+    """Relative spread of the holes' side lengths (0 = all identical).
+
+    A board's holes are its cells and they all measure the same. This is what
+    rules out the browser chrome: on an upscaled screenshot its text glyphs
+    become dozens of holes, enough to pass the hole count, but they range from
+    5 px to over a thousand. Without this the chrome wins, because it covers
+    more area than the board.
+
+    Median absolute deviation, not standard deviation: on a downscaled
+    screenshot some neighbouring cells merge into one double-sized hole, and a
+    mean-based measure would blow up over that minority and reject the real
+    board. The MAD ignores them, while text — where nearly every hole differs —
+    still scores high.
+    """
+    if not hole_rects:
+        return float("inf")
+    sides = np.array([s for (_, _, w, h) in hole_rects for s in (w, h)], dtype=float)
+    median = np.median(sides)
+    if median <= 0:
+        return float("inf")
+    return float(np.median(np.abs(sides - median)) / median)
+
+
 def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
     """Locate the outer frame contour. Returns (index, contours, hierarchy).
 
@@ -143,12 +173,15 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
     holes is what separates it from any other dark square.
     """
     contours, hierarchy = cv2.findContours(dark, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)[-2:]
+    if hierarchy is None:          # an image with no dark pixels at all
+        rec.add("4. Candidate contours", img, ["No dark contour found in the image."])
+        return None, contours, np.empty((0, 4), dtype=np.int32)
     hierarchy = hierarchy[0]
 
-    holes_of = {}
+    holes_of: dict[int, list] = {}
     for i, h in enumerate(hierarchy):
         if h[3] != -1:
-            holes_of[h[3]] = holes_of.get(h[3], 0) + 1
+            holes_of.setdefault(h[3], []).append(cv2.boundingRect(contours[i]))
 
     min_area = 0.02 * img.shape[0] * img.shape[1]
     overlay = img.copy()
@@ -165,7 +198,9 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
         approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
         aspect = w / hh
         solidity = area / (w * hh)
-        holes = holes_of.get(i, 0)
+        hole_rects = holes_of.get(i, [])
+        holes = len(hole_rects)
+        spread = _hole_spread(hole_rects)
 
         reason = None
         if area < min_area:
@@ -180,12 +215,14 @@ def _find_board(dark: np.ndarray, img: np.ndarray, rec: _Recorder):
             reason = f"solidity {solidity:.2f} <= 0.90"
         elif holes < MIN_HOLES:
             reason = f"only {holes} holes, {MIN_HOLES} required"
+        elif spread > MAX_HOLE_SPREAD:
+            reason = f"holes vary in size ({spread:.2f}), not a grid"
 
         color = (0, 0, 255) if reason else (0, 170, 0)
         cv2.drawContours(overlay, [approx], -1, color, 2)
         _label(overlay, reason or f"CANDIDATE ok, {holes} holes", (x + 4, max(14, y - 6)), color)
         notes.append(f"({x},{y}) {w}x{hh}  AR={aspect:.2f} solidity={solidity:.2f} "
-                     f"holes={holes}  ->  {reason or 'ACCEPTED'}")
+                     f"holes={holes} spread={spread:.2f}  ->  {reason or 'ACCEPTED'}")
 
         if reason is None:
             survivors.append((area, i))
@@ -243,26 +280,30 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
     areas = rects[:, 2] * rects[:, 3]
     rects = rects[areas > 0.3 * np.median(areas)]       # drop antialiasing slivers
 
-    n = int(round(len(rects) ** 0.5))
-    if n * n != len(rects) or n < 4:
-        return fail(f"{len(rects)} cells detected: not a plausible NxN square.")
+    # The holes are NOT trusted one by one, only in aggregate. On a downscaled
+    # screenshot the thin inner lines fade above the threshold and neighbouring
+    # cells merge into a single hole; on an upscaled one, interpolation splits
+    # some. Either way the *median* hole is still one cell, and the holes still
+    # span the whole board, so a regular lattice can be fitted over their
+    # extent. Requiring exactly N*N holes would break at any browser zoom.
+    x0, y0 = rects[:, 0].min(), rects[:, 1].min()
+    x1 = (rects[:, 0] + rects[:, 2]).max()
+    y1 = (rects[:, 1] + rects[:, 3]).max()
+    side = float(np.median(np.concatenate([rects[:, 2], rects[:, 3]])))
+    if side < 4:
+        return fail(f"Cells of {side:.1f} px are too small to sample reliably.")
 
-    cx = rects[:, 0] + rects[:, 2] / 2
-    cy = rects[:, 1] + rects[:, 3] / 2
-    gap = (cx.max() - cx.min()) / n * 0.5
-    col_centers = _cluster_1d(cx, gap)
-    row_centers = _cluster_1d(cy, gap)
-    if len(col_centers) != n or len(row_centers) != n:
-        return fail(f"The grid is not {n}x{n}: "
-                    f"{len(col_centers)} columns and {len(row_centers)} rows.")
+    n = int(round(((x1 - x0) / side + (y1 - y0) / side) / 2))
+    if not 4 <= n <= 16:
+        return fail(f"Implausible board size: N = {n}.")
 
+    cell_w, cell_h = (x1 - x0) / n, (y1 - y0) / n
     cells = np.zeros((n, n, 4), dtype=np.int32)
-    for (x, y, w, h) in rects:
-        col = int(np.argmin([abs(x + w / 2 - c) for c in col_centers]))
-        row = int(np.argmin([abs(y + h / 2 - c) for c in row_centers]))
-        cells[row, col] = (x, y, w, h)
-    if (cells[:, :, 2] == 0).any():
-        return fail("Some grid position has no cell assigned to it.")
+    for row in range(n):
+        for col in range(n):
+            cx0, cy0 = round(x0 + col * cell_w), round(y0 + row * cell_h)
+            cx1, cy1 = round(x0 + (col + 1) * cell_w), round(y0 + (row + 1) * cell_h)
+            cells[row, col] = (cx0, cy0, cx1 - cx0, cy1 - cy0)
 
     grid = img.copy()
     for row in range(n):
@@ -270,10 +311,11 @@ def detect(img: np.ndarray, debug: bool = True) -> Detection:
             x, y, w, h = cells[row, col]
             cv2.rectangle(grid, (x, y), (x + w, y + h), (255, 0, 255), 1)
     rec.add("7. Cell grid", grid,
-            [f"N = {n} (from {len(rects)} holes in the frame)",
-             f"Mean cell side: {cells[:, :, 2].mean():.1f} px",
-             "Cells come from the contour's holes, not from an arithmetic",
-             "division: each one is what OpenCV actually found."])
+            [f"{len(rects)} holes found, median side {side:.1f} px",
+             f"Board spans ({x0},{y0})-({x1},{y1})  ->  N = {n}",
+             f"Fitted cell: {cell_w:.1f} x {cell_h:.1f} px",
+             "The lattice is fitted over the holes' extent rather than taken",
+             "hole by hole, so merged or split holes do not shift the grid."])
 
     # --- color of each cell -------------------------------------------------
     sampling = img.copy()

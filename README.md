@@ -12,7 +12,7 @@ backtracking move forward and backtrack, step by step, on the board.
 
 | Part | Status |
 |---|---|
-| OpenCV detection (`queens/vision.py`) | working on the three screenshots in `doc/` |
+| OpenCV detection (`queens/vision.py`) | working, and stable from 0.5× to 3× rescaling |
 | Board model (`queens/board.py`) | done |
 | Backtracking solver | pending |
 | PySide6 interface (3 tabs) | pending |
@@ -27,6 +27,11 @@ largest contour in the image is **not** the board but the browser chrome, which
 passes every shape filter (aspect ratio 1.08, solidity 1.00, 4 vertices) and is
 rejected only for having 12 holes instead of 81.
 
+Those holes are not trusted one by one, only in aggregate: a **regular lattice
+is fitted** over their extent. That is what keeps the detection stable across
+browser zoom levels — downscaling fades the thin inner lines and merges
+neighbouring cells, upscaling splits them, and neither shifts the grid.
+
 Each cell's color is the **quantized mode** of its central 60 %, not the mean,
 so a queen or a cross already drawn on the board does not skew it. Regions are
 grouped by proximity in Lab, and the result is validated before being returned:
@@ -38,6 +43,28 @@ there must be exactly N regions and each one must be connected.
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+In VS Code, `.vscode/settings.json` already points at `.venv` and enables the
+pytest Test Explorer; accept the recommended extensions when prompted.
+
+## Running
+
+There is no GUI yet, but the pipeline records all ten of its stages, and they
+can be dumped to disk:
+
+```bat
+python -m queens.dump_stages doc/Example3.png
+```
+
+This writes `out/01_original.png` … `out/10_borders.png` and prints each
+stage's notes. The two most informative are **`04_candidate_contours.png`**,
+where every candidate is labelled with the reason it was rejected, and
+**`10_borders.png`**, whose thick strokes should line up exactly with the real
+color boundaries.
+
+```bat
+python -m pytest
 ```
 
 ## Test screenshots
