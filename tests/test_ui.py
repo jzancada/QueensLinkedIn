@@ -20,6 +20,7 @@ from PySide6.QtCore import QPoint, QSize                    # noqa: E402
 from PySide6.QtWidgets import QApplication                  # noqa: E402
 
 from queens.board import Board, Mark                        # noqa: E402
+from queens.solver import StepKind, is_solution             # noqa: E402
 from queens.ui.board_view import BoardView                  # noqa: E402
 from queens.ui.image_view import ImageView, to_qimage       # noqa: E402
 from queens.ui.main_window import MainWindow                # noqa: E402
@@ -190,6 +191,79 @@ def test_clicking_maps_to_the_right_cell(board_view):
     assert board_view.cell_at(rect.center()) == (2, 3)
     assert board_view.cell_at(rect.topLeft()) == (2, 3)
     assert board_view.cell_at(QPoint(0, 0)) is None      # the margin around the board
+
+
+def run_to_the_end(panel, limit=50000):
+    """Drive the search from the test, without waiting on the timer."""
+    for _ in range(limit):
+        if not panel.advance():
+            return
+    raise AssertionError("the search did not finish")
+
+
+def test_the_solver_panel_runs_the_search_to_a_solution(window):
+    window.load(DOC / "Example3.png")
+    panel = window.solver
+
+    run_to_the_end(panel)
+
+    assert "Solved in" in panel.status.text()
+    assert is_solution(panel.board, tuple(np.argmax(panel.board.marks == Mark.QUEEN, axis=1)))
+    assert int((panel.board.marks == Mark.QUEEN).sum()) == 9
+
+
+def test_the_solver_leaves_the_players_board_alone(window):
+    """Both panels show the same puzzle, but the marks are not shared."""
+    window.load(DOC / "Example3.png")
+    window.play.cycle_mark(0, 0)                 # a cross, placed by the player
+
+    run_to_the_end(window.solver)
+
+    assert window.play.board.marks[0, 0] == Mark.CROSS
+    assert window.solver.board is not window.play.board
+
+
+def test_a_single_step_shows_what_the_search_just_did(window):
+    window.load(DOC / "Example3.png")
+    panel = window.solver
+
+    panel.single_step()
+    assert panel.status.text().startswith("TRY")
+    assert panel.view._focus[:2] == (0, 0)       # the cell the step is about
+    assert "1 try" in panel.tally.text()
+
+    panel.single_step()                          # the first cell is judged
+    assert (panel.counts.get(StepKind.PLACE, 0)
+            + panel.counts.get(StepKind.REJECT, 0)) == 1
+    assert panel.trace.toPlainText().count("\n") == 1
+
+
+def test_turning_the_look_ahead_off_makes_the_search_longer(window):
+    """The comparison the panel exists to make watchable."""
+    window.load(DOC / "Example3.png")
+    panel = window.solver
+
+    run_to_the_end(panel)
+    pruned = panel.counts[StepKind.TRY]
+
+    panel.prune.setChecked(False)                # this restarts the search
+    assert panel.counts == {} and not panel.finished
+    run_to_the_end(panel)
+
+    assert panel.counts[StepKind.TRY] > 10 * pruned
+    assert StepKind.PRUNE not in panel.counts
+
+
+def test_reset_puts_the_board_back_to_empty(window):
+    window.load(DOC / "Example3.png")
+    panel = window.solver
+    run_to_the_end(panel)
+
+    panel.restart()
+
+    assert int((panel.board.marks == Mark.QUEEN).sum()) == 0
+    assert panel.counts == {} and panel.trace.toPlainText() == ""
+    assert not panel.finished
 
 
 def test_the_play_tab_cycles_a_cell_through_the_three_marks(window):

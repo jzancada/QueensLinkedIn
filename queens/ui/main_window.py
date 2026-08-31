@@ -1,8 +1,8 @@
 """The main window: one screenshot in, three panels over it.
 
 The window opens the file and hands the result around; each panel decides what
-to make of it. Step 2 of the interface: the vision panel is live, the solver
-and play panels are still placeholders.
+to make of it. Step 4 of the interface: only the rules and hints of the play
+panel are still missing.
 """
 
 from __future__ import annotations
@@ -10,27 +10,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QFileDialog, QLabel, QMainWindow, QTabWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import QFileDialog, QMainWindow, QTabWidget
 
 from ..vision import Detection, detect_file
 from .play_tab import PlayTab
+from .solver_tab import SolverTab
 from .vision_tab import VisionTab
 
 DOC = Path(__file__).resolve().parent.parent.parent / "doc"
-
-
-def _placeholder(text: str) -> QWidget:
-    """A tab that is not written yet, saying so rather than looking broken."""
-    page = QWidget()
-    label = QLabel(text)
-    label.setWordWrap(True)
-    label.setStyleSheet("color: #888888; font-size: 14px;")
-    layout = QVBoxLayout(page)
-    layout.addStretch()
-    layout.addWidget(label)
-    layout.addStretch()
-    return page
 
 
 class MainWindow(QMainWindow):
@@ -42,12 +29,12 @@ class MainWindow(QMainWindow):
         self.detection: Detection | None = None
 
         self.vision = VisionTab()
+        self.solver = SolverTab()
         self.play = PlayTab()
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.vision, "1 · Vision")
-        self.tabs.addTab(_placeholder("The solver panel goes here:\n"
-                                      "the search, step by step."), "2 · Solver")
+        self.tabs.addTab(self.solver, "2 · Solver")
         self.tabs.addTab(self.play, "3 · Play")
         self.setCentralWidget(self.tabs)
 
@@ -78,6 +65,7 @@ class MainWindow(QMainWindow):
 
         stages = self.detection.stages
         self.vision.show_detection(self.detection)
+        self.solver.set_board(self.detection.board)
         self.play.set_board(self.detection.board)
 
         if self.detection.ok:

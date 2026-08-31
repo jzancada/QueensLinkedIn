@@ -46,6 +46,18 @@ class Board:
             return True
         return bool(self.region[row, col] != self.region[r, c])
 
+    def copy(self) -> "Board":
+        """An independent board with the same regions.
+
+        The panels must not fight over one set of marks: the solver rewrites
+        them on every step, and it would wipe out the game the player has going
+        in the other tab.
+        """
+        clone = Board(self.n, self.region.copy(), list(self.colors),
+                      None if self.cells is None else self.cells.copy())
+        clone.marks = self.marks.copy()
+        return clone
+
     def set_queens(self, queens) -> None:
         """Replace the marks with one queen per row, at the given columns.
 
