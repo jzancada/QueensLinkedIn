@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
@@ -29,6 +29,8 @@ class ImageView(QWidget):
     that tells which cell was clicked — and that is far easier when the widget
     knows exactly where it drew.
     """
+
+    clicked = Signal(int, int)      # coordinates in the image, not in the widget
 
     def __init__(self, placeholder: str = "") -> None:
         super().__init__()
@@ -56,6 +58,11 @@ class ImageView(QWidget):
             return None
         scale = self._pixmap.width() / rect.width()
         return (int((pos.x() - rect.x()) * scale), int((pos.y() - rect.y()) * scale))
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802  (Qt naming)
+        where = self.image_pos(event.position().toPoint())
+        if where is not None:
+            self.clicked.emit(*where)
 
     def paintEvent(self, event) -> None:      # noqa: N802  (Qt naming)
         painter = QPainter(self)

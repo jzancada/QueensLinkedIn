@@ -53,6 +53,47 @@ def test_loading_a_screenshot_reports_the_board(window):
     assert "Example3.png" in window.windowTitle()
 
 
+def test_the_vision_panel_lists_every_stage(window):
+    """Ten stages, and it opens on the last one — the borders tell at a glance
+    whether the reading is right."""
+    window.load(DOC / "Example3.png")
+    panel = window.vision
+
+    assert panel.stage_list.count() == 10
+    assert panel.stage_list.item(0).text().startswith("1.")
+    assert panel.stage_list.currentRow() == 9
+    assert "Thick stroke" in panel.notes.toPlainText()
+
+    panel.stage_list.setCurrentRow(3)
+    assert "ACCEPTED" in panel.notes.toPlainText()       # the candidates and their verdicts
+    assert "Stage 4 of 10" in panel.caption.text()
+
+
+def test_clicking_the_image_names_the_cell(window):
+    """The inspector is what ties a pixel of the screenshot back to the model."""
+    window.load(DOC / "Example3.png")
+    panel = window.vision
+    board = window.detection.board
+
+    x, y, w, h = board.cells[4, 6]
+    panel.inspect(x + w // 2, y + h // 2)
+
+    assert "Cell (4, 6)" in panel.caption.text()
+    assert f"region {board.region[4, 6]}" in panel.caption.text()
+
+
+def test_a_click_on_the_board_crop_is_not_mistaken_for_a_cell(window):
+    """That stage is the same board in different coordinates, so it is off limits."""
+    window.load(DOC / "Example3.png")
+    panel = window.vision
+    panel.stage_list.setCurrentRow(5)                    # 6. Board crop
+
+    before = panel.caption.text()
+    panel.inspect(10, 10)
+    assert panel.caption.text() == before
+    assert "Click the image" not in before
+
+
 def test_a_failed_detection_is_reported_not_swallowed(window, tmp_path):
     """The window must survive a bad image and say why, without a board."""
     blank = tmp_path / "blank.png"
@@ -63,6 +104,12 @@ def test_a_failed_detection_is_reported_not_swallowed(window, tmp_path):
 
     assert not window.detection.ok
     assert "failed" in window.statusBar().currentMessage().lower()
+
+    # The stages reached are the explanation, so the panel must still show them
+    # and say where the pipeline stopped.
+    panel = window.vision
+    assert panel.stage_list.count() == len(window.detection.stages)
+    assert "stopped here" in panel.caption.text()
 
 
 def test_the_image_keeps_its_aspect_ratio_and_maps_clicks_back(app):

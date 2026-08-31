@@ -1,8 +1,8 @@
 """The main window: one screenshot in, three panels over it.
 
-Step 1 of the interface. The shell is here and the pipeline is already wired to
-it — opening a file runs the detection and reports what came out — while the
-three panels are still placeholders, filled in one at a time.
+The window opens the file and hands the result around; each panel decides what
+to make of it. Step 2 of the interface: the vision panel is live, the solver
+and play panels are still placeholders.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QFileDialog, QLabel, QMainWindow, QTabWidget,
                                QVBoxLayout, QWidget)
 
 from ..vision import Detection, detect_file
-from .image_view import ImageView
+from .vision_tab import VisionTab
 
 DOC = Path(__file__).resolve().parent.parent.parent / "doc"
 
@@ -40,10 +40,10 @@ class MainWindow(QMainWindow):
 
         self.detection: Detection | None = None
 
-        self.vision_view = ImageView("Open a screenshot to begin  (Ctrl+O)")
+        self.vision = VisionTab()
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.vision_view, "1 · Vision")
+        self.tabs.addTab(self.vision, "1 · Vision")
         self.tabs.addTab(_placeholder("The solver panel goes here:\n"
                                       "the search, step by step."), "2 · Solver")
         self.tabs.addTab(_placeholder("The board to play by hand goes here."), "3 · Play")
@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"Queens — {Path(path).name}")
 
         stages = self.detection.stages
-        self.vision_view.set_image(stages[0].image if stages else None)
+        self.vision.show_detection(self.detection)
 
         if self.detection.ok:
             board = self.detection.board

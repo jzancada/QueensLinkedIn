@@ -15,7 +15,7 @@ backtracking move forward and backtrack, step by step, on the board.
 | OpenCV detection (`queens/vision.py`) | working, and stable from 0.5× to 3× rescaling |
 | Board model (`queens/board.py`) | done |
 | Backtracking solver (`queens/solver.py`) | working, and every step is observable |
-| PySide6 interface (`queens/ui/`) | step 1 of 5: the window, its tabs, and the screenshot |
+| PySide6 interface (`queens/ui/`) | step 2 of 5: the vision panel, stage by stage |
 
 ## How the detection works
 
@@ -73,8 +73,9 @@ pytest Test Explorer; accept the recommended extensions when prompted.
 
 ## Running
 
-The interface is being built one panel at a time; it already opens a
-screenshot and reports what the detection made of it:
+The interface is being built one panel at a time. Its vision panel already
+walks the ten stages with their notes, and a click on the image names the cell
+underneath — region, color and rectangle:
 
 ```bat
 python -m queens.ui
