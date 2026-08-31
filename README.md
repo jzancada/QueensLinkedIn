@@ -15,7 +15,7 @@ backtracking move forward and backtrack, step by step, on the board.
 | OpenCV detection (`queens/vision.py`) | working, and stable from 0.5× to 3× rescaling |
 | Board model (`queens/board.py`) | done |
 | Backtracking solver (`queens/solver.py`) | working, and every step is observable |
-| PySide6 interface (3 tabs) | pending |
+| PySide6 interface (`queens/ui/`) | step 1 of 5: the window, its tabs, and the screenshot |
 
 ## How the detection works
 
@@ -73,8 +73,21 @@ pytest Test Explorer; accept the recommended extensions when prompted.
 
 ## Running
 
-There is no GUI yet, but the pipeline records all ten of its stages, and they
-can be dumped to disk:
+The interface is being built one panel at a time; it already opens a
+screenshot and reports what the detection made of it:
+
+```bat
+python -m queens.ui
+python -m queens.ui doc/Example3.png
+```
+
+> On a Python that comes from Anaconda, Qt used to die on import with
+> `WinError 127`: it finds Anaconda's ICU 73 before Windows' own, and Qt's
+> build needs the latter. `queens/ui/__init__.py` pins the right one, so
+> nothing has to be installed or uninstalled.
+
+The pipeline also records all ten of its detection stages, and they can be
+dumped to disk without any GUI:
 
 ```bat
 python -m queens.dump_stages doc/Example3.png
